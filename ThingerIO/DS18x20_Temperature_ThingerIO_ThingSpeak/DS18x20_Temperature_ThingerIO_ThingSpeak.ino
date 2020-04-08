@@ -2,11 +2,19 @@
 
 #define _DEBUG_
 #include <ThingerESP8266.h>
+#include "ThingSpeak.h"
 
 #include "local.h"
 
 // Thinger
 ThingerESP8266 thing(USERNAME, DEVICE_ID, DEVICE_CREDENTIAL);
+
+// Thingspeak
+unsigned long myChannelNumber = SECRET_CH_ID;
+const char * myWriteAPIKey = SECRET_WRITE_APIKEY;
+#include <ESP8266WiFi.h>
+WiFiClient  client;
+
 
 // Rest
 float celsius, fahrenheit;
@@ -28,6 +36,8 @@ void setup(void) {
   // digital pin control example (i.e. turning on/off a light, a relay, configuring a parameter, etc)
   thing["led"] << digitalPin(LED_BUILTIN);
   thing["temp"] >> outputValue(fahrenheit);
+
+  ThingSpeak.begin(client);
 }
 
 void loop(void) {
@@ -128,4 +138,22 @@ void loop(void) {
 
   // thinger
   thing.handle();
+
+  // thingspeak every 20 seconds
+  static uint16_t loopcount = 0;
+  int httpCode;
+  if (loopcount++ % 20) return;
+  long rssi = WiFi.RSSI();
+  ThingSpeak.setField(1, rssi);
+  ThingSpeak.setField(2, fahrenheit);
+  ThingSpeak.setStatus(String("SSID: " SECRET_SSID));
+
+  // Write value to Field 1 of a ThingSpeak Channel
+  httpCode = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+  if (httpCode == 200) {
+    Serial.println("Channel write successful.");
+  }
+  else {
+    Serial.println("Problem writing to channel. HTTP error code " + String(httpCode));
+  }
 }
