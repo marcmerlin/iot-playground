@@ -43,6 +43,23 @@ AdafruitIO_Feed *console = io.feed("console");
 // https://github.com/milesburton/Arduino-Temperature-Control-Library
 OneWire  ds(D3);
 
+// As seen in the field, while the ESP8266 is supposed to self-reconnect
+// to a flaky network, I have seen it lose its IP and not request a new one:
+// #2: 11:22:33:44:55:66 (IP unset) wl-namewrl-2.4 (RSSI: -79). Temp: 68.00
+// If IP is unset, trigger a reboot to reset everything clean and recover
+void(* resetFunc) (void) = 0; // jump to 0 to cause a sofware reboot
+
+void reset() {
+#ifdef ESP8266
+    Serial.print("Doing ESP restart Failed");
+    ESP.restart();
+    Serial.print("ESP Restart Failed");
+#endif
+    Serial.print("Doing Jump 0 software reset");
+    resetFunc();
+    Serial.print("Reset Failed");
+}
+
 void setup(void) {
     Serial.begin(115200);
 
@@ -194,6 +211,12 @@ void loop(void) {
 
     IPAddress ip = WiFi.localIP();
     rssi = WiFi.RSSI();
+    Serial.print("IP (used to reboot if connection is lost): ");
+    Serial.println(ip.toString());
+    if (ip.toString() == String("(IP unset)") ) {
+	Serial.println("IP unset, rebooting...");
+	reset();
+    }    
     // thinger.io supports longer update messages
     status =  "#" DEVNUMS ": " + String(wifimac) + " " + ip.toString() + " " + WIFI_SSID + " (RSSI: " + String(rssi) + "). Temp: " + String(fahrenheit);
 
@@ -206,19 +229,19 @@ void loop(void) {
 #endif
 
     // this is the delay loop to ensure we don't push too often to the other clouds
-    static int16_t loopdelay = 20;
+    static int16_t loopdelay = 60;
     if (loopdelay--) return;
-    // other clouds, especially thingspeak, do not like concurrent writes from multiple
-    // devices on the same device account, so we spread them out randomly. This is not
-    // needed if you have quota to connect each device to its own account.
-    loopdelay = random(20, 35);
     Serial.println(status);
+    loopdelay = 60;
     // ---------------------------------------------------------------------
     // thingspeak
 #ifdef THINGSPEAK
-    // Thingspeak somewhat allows multiple devices to write as a single one, but if they
-    // are time synchronized, one of them will get through reliably and the others will
-    // randomly get rejected. Add a random sleep to help spread the winner.
+    // Thingspeak, does not like concurrent writes from multiple devices on the
+    // same device account, so we spread them out randomly. This is not needed
+    // if you have quota to connect each device to its own account.
+    // Also, it accepts messages faster, but they count against your quota, so
+    // once a minute on average, is enough.
+    loopdelay = random(50, 70);
     int httpCode;
     ThingSpeak.setField(DEVNUM, fahrenheit);
     ThingSpeak.setStatus(status);
