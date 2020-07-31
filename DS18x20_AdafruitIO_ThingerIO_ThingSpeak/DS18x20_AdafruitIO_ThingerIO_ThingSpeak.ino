@@ -3,7 +3,7 @@
 // Config includes AdafruitIO
 #include "config.h"
 
-// ESP8266 compile options to save RAM: 
+// ESP8266 compile options to save RAM:
 // Debug Port: Serial, level Core, v2 lower memory no features, basic SSL ciphers
 
 
@@ -17,6 +17,9 @@ String status;
 
 // Thinger
 // TLS takes too much RAM for the Wifi stack on ESP8266, turn it off
+// secrets sent in the clear are not reused across other clouds and
+// only allow pushing bad data points, which is not really something
+// we're worried about.
 #ifdef THINGER
 #define _DISABLE_TLS_
 #define _DEBUG_
@@ -115,7 +118,7 @@ void caltemp(void) {
     byte type_s;
     byte data[12];
     byte addr[8];
-    
+
     if ( !ds.search(addr)) {
           Serial.println("No more addresses.");
           Serial.println();
@@ -123,7 +126,7 @@ void caltemp(void) {
           delay(250);
           return;
     }
-    
+
     Serial.print("ROM =");
     for( i = 0; i < 8; i++) {
           Serial.write(' ');
@@ -135,7 +138,7 @@ void caltemp(void) {
                   return;
     }
     Serial.println();
- 
+
     // the first ROM byte indicates which chip
     switch (addr[0]) {
           case 0x10:
@@ -153,17 +156,17 @@ void caltemp(void) {
           default:
                   Serial.println("Device is not a DS18x20 family device.");
                   return;
-    } 
+    }
 
     ds.reset();
     ds.select(addr);
     ds.write(0x44, 1);        // start conversion, with parasite power on at the end
-    
+
     delay(1000);     // maybe 750ms is enough, maybe not
     // we might do a ds.depower() here, but the reset will take care of it.
-    
+
     present = ds.reset();
-    ds.select(addr);    
+    ds.select(addr);
     ds.write(0xBE);         // Read Scratchpad
 
     Serial.print("  Data = ");
@@ -216,7 +219,14 @@ void loop(void) {
     if (ip.toString() == String("(IP unset)") ) {
 	Serial.println("IP unset, rebooting...");
 	reset();
-    }    
+    }
+
+    if (fahrenheit > 130) {
+	Serial.print("Temperature too high, bad sensor/reading, skipping: ");
+	Serial.println(fahrenheit);
+	return;
+    }
+
     // thinger.io supports longer update messages
     status =  "#" DEVNUMS ": " + String(wifimac) + " " + ip.toString() + " " + WIFI_SSID + " (RSSI: " + String(rssi) + "). Temp: " + String(fahrenheit);
 
